@@ -1,6 +1,6 @@
 #!/bin/sh /etc/rc.common
 
-# RouteKeeper Init Script with Interface Readiness and Best Route Selection
+# RouteKeeper Init Script with Procd Management and Smart Gateway Selection
 
 START=90
 STOP=10
@@ -8,7 +8,9 @@ USE_PROCD=1
 
 PROG="/usr/libexec/rpcd/routekeeper/rpc_handler.lua"
 
-# Identify best gateway by lowest ping
+# ------------------------------------------------------------------------------------------------
+# Function: Run ping tests and select the interface with the lowest latency (fallback to WAN)
+# ------------------------------------------------------------------------------------------------
 select_best_gateway() {
     echo "Selecting best default interface based on ping..."
 
@@ -36,7 +38,6 @@ select_best_gateway() {
         echo "  Testing $iface..."
         result=$(ubus call luci.routekeeper run_ping_test "{\"interface\":\"$iface\"}")
         ping_result=$(echo "$result" | jsonfilter -e "@.ping_result" 2>/dev/null)
-
         latency=$(echo "$ping_result" | grep -oE '[0-9]+')
 
         if [ -n "$latency" ]; then
@@ -59,22 +60,39 @@ select_best_gateway() {
     fi
 }
 
-# Start RouteKeeper via procd
+# ------------------------------------------------------------------------------------------------
+# Function: Start RouteKeeper (via procd)
+# ------------------------------------------------------------------------------------------------
 start_service() {
     echo "Starting RouteKeeper..."
 
-    select_best_gateway
-
+    # Start rpc_handler.lua and track via procd
     procd_open_instance
     procd_set_param command lua "$PROG"
     procd_set_param stdout 1
     procd_set_param stderr 1
     procd_set_param respawn
     procd_close_instance
+
+    # Wait a bit, then select best gateway in background
+    (
+        sleep 2
+        select_best_gateway
+    ) &
 }
 
-# Stop placeholder for clean restart handling
+# ------------------------------------------------------------------------------------------------
+# Function: Stop RouteKeeper (procd handles this)
+# ------------------------------------------------------------------------------------------------
 stop_service() {
     echo "Stopping RouteKeeper..."
-    # procd handles process termination automatically
+}
+
+# ------------------------------------------------------------------------------------------------
+# Optional explicit restart handler
+# ------------------------------------------------------------------------------------------------
+restart() {
+    stop
+    sleep 1
+    start
 }
