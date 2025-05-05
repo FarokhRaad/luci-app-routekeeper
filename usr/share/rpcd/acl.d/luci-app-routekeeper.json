@@ -1,0 +1,34 @@
+{
+    "luci-app-routekeeper": {
+        "description": "Secure access for RouteKeeper RPC and config",
+        "read": {
+            "ubus": {
+                "luci.routekeeper": [
+                    "get_interfaces",
+                    "load_settings",
+                    "find_active_default_if"
+                ]
+            },
+            "uci": ["routekeeper"],
+            "file": {
+                "/etc/config/routekeeper": ["read"],
+                "/tmp/routekeeper_debug.log": ["read"]
+            }
+        },
+        "write": {
+            "ubus": {
+                "luci.routekeeper": [
+                    "set_default_gateway",
+                    "save_settings",
+                    "run_ping_test",
+                    "run_curl_test"
+                ]
+            },
+            "uci": ["routekeeper"],
+            "file": {
+                "/etc/config/routekeeper": ["write"],
+                "/tmp/routekeeper_debug.log": ["write"]
+            }
+        }
+    }
+}

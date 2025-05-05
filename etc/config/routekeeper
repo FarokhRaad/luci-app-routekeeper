@@ -1,0 +1,11 @@
+
+config global 'global'
+	option selected_default 'wan'
+	option curl_address 'http://www.gstatic.com/generate_204'
+	option ping_address '8.8.8.8'
+	option curl_timeout '2'
+	option curl_max_time '2'
+	option ping_count '1'
+	option ping_timeout '1'
+	option test_type 'both'
+
