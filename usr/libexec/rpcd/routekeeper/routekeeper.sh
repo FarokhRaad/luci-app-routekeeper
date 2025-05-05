@@ -1,6 +1,5 @@
 #!/bin/sh
 
-# Define UBUS service
 UBUS_SERVICE="luci.routekeeper"
 
 ##########################################
@@ -14,7 +13,7 @@ interactive_menu() {
 | __  |___ _ _| |_ ___| |_ ___ ___ ___ ___ ___
 |    -| . | | |  _| -_| '_| -_| -_| . | -_|  _|
 |__|__|___|___|_| |___|___|___|___|  _|___|_|
-                  Interactive CLI |_|          
+                  Interactive TUI |_|
 "
         echo ""
         echo "Please select a command:"
@@ -42,9 +41,9 @@ interactive_menu() {
             *) echo "Invalid command. Try again." ;;
         esac
 
-	echo ""
-	printf "Press ENTER to return to menu..." > /dev/tty
-	read -r < /dev/tty
+        echo ""
+        printf "Press ENTER to return to menu..." > /dev/tty
+        read -r < /dev/tty
     done
 }
 
@@ -82,8 +81,11 @@ list_interfaces_clean() {
 
 ##########################################
 # Prompt User to Select an Interface
+# Usage: select_interface true
 ##########################################
 select_interface() {
+    allow_all="$1"
+
     RAW_INTERFACES=$(ubus call "$UBUS_SERVICE" get_interfaces 2>/dev/null)
     [ $? -ne 0 ] && echo "Error: Failed to fetch interfaces." && return 1
     RAW_SINGLE=$(echo "$RAW_INTERFACES" | tr -d '\n')
@@ -101,14 +103,18 @@ select_interface() {
     TOTAL_IFACES=$((INDEX - 1))
     [ "$TOTAL_IFACES" -eq 0 ] && echo "No interfaces found." > /dev/tty && return 1
 
+    if [ "$allow_all" = "true" ]; then
+        echo "A - Test all interfaces" > /dev/tty
+    fi
+
     echo "" > /dev/tty
     printf "Select an interface (or type 'q' to cancel): " > /dev/tty
     read -r IFACE_CHOICE < /dev/tty
 
-    if [ "$IFACE_CHOICE" = "q" ] || [ "$IFACE_CHOICE" = "Q" ]; then
-        echo "Cancelled." > /dev/tty
-        return 1
-    fi
+    case "$IFACE_CHOICE" in
+        [Qq]) echo "Cancelled." > /dev/tty; return 1 ;;
+        [Aa]) SELECTED_IFACE="ALL"; return 0 ;;
+    esac
 
     if ! echo "$IFACE_CHOICE" | grep -qE '^[0-9]+$' || [ "$IFACE_CHOICE" -lt 1 ] || [ "$IFACE_CHOICE" -gt "$TOTAL_IFACES" ]; then
         echo "Invalid choice." > /dev/tty
@@ -135,10 +141,16 @@ set_gateway_interactive() {
 ##########################################
 curl_test_interactive() {
     echo "Running Curl Test:"
-    IFACE=$(select_interface) || return
-    RESULT=$(ubus call "$UBUS_SERVICE" run_curl_test "{ \"interface\": \"$IFACE\" }" 2>/dev/null)
-    [ $? -ne 0 ] && echo "Error: Curl test failed." && return
-    echo "$RESULT" | format_output
+    select_interface true || return
+
+    if [ "$SELECTED_IFACE" = "ALL" ]; then
+        echo "Running curl test on all interfaces..."
+        ubus call "$UBUS_SERVICE" run_curl_test_all | format_output
+    else
+        result=$(ubus call "$UBUS_SERVICE" run_curl_test "{\"interface\":\"$SELECTED_IFACE\"}" 2>/dev/null)
+        [ $? -ne 0 ] && echo "Error: Curl test failed." && return
+        echo "$result" | format_output
+    fi
 }
 
 ##########################################
@@ -146,10 +158,16 @@ curl_test_interactive() {
 ##########################################
 ping_test_interactive() {
     echo "Running Ping Test:"
-    IFACE=$(select_interface) || return
-    RESULT=$(ubus call "$UBUS_SERVICE" run_ping_test "{ \"interface\": \"$IFACE\" }" 2>/dev/null)
-    [ $? -ne 0 ] && echo "Error: Ping test failed." && return
-    echo "$RESULT" | format_output
+    select_interface true || return
+
+    if [ "$SELECTED_IFACE" = "ALL" ]; then
+        echo "Running ping test on all interfaces..."
+        ubus call "$UBUS_SERVICE" run_ping_test_all | format_output
+    else
+        result=$(ubus call "$UBUS_SERVICE" run_ping_test "{\"interface\":\"$SELECTED_IFACE\"}" 2>/dev/null)
+        [ $? -ne 0 ] && echo "Error: Ping test failed." && return
+        echo "$result" | format_output
+    fi
 }
 
 ##########################################

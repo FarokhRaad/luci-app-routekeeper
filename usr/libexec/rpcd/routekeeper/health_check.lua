@@ -1,5 +1,6 @@
 local uci = require("uci").cursor()
 local util = require("luci.util")
+local iface = require("iface")
 
 local M = {}
 
@@ -66,7 +67,7 @@ function M.save_settings(new_settings)
 end
 
 ---------------------------------------------------------------------------------------------
--- Function: Run Curl Test
+-- Function: Run Ping Test
 ---------------------------------------------------------------------------------------------
 function M.run_ping_test(ifn)
     local settings = M.load_settings()
@@ -74,9 +75,13 @@ function M.run_ping_test(ifn)
         return { success = false, error = "Invalid interface name" }
     end
 
+    local count = tonumber(settings.ping_count) or 1
+    local timeout = tonumber(settings.ping_timeout) or 1
+    local ping_address = settings.ping_address or "8.8.8.8"
+
     local ping_cmd = string.format(
-        "ping -c %s -W %s -I %s %s 2>&1",
-        settings.ping_count, settings.ping_timeout, ifn, settings.ping_address
+        "ping -c %d -W %d -I %s %s 2>&1",
+        count, timeout, ifn, ping_address
     )
 
     local output = util.trim(util.exec(ping_cmd))
@@ -93,8 +98,9 @@ function M.run_ping_test(ifn)
         ping_result = string.format("%d ms", math.floor(rtt_num))
     }
 end
+
 ---------------------------------------------------------------------------------------------
--- Function: Run Ping Test
+-- Function: Run Curl Test
 ---------------------------------------------------------------------------------------------
 function M.run_curl_test(ifn)
     local settings = M.load_settings()
@@ -102,9 +108,13 @@ function M.run_curl_test(ifn)
         return { success = false, error = "Invalid interface name" }
     end
 
+    local connect_timeout = tonumber(settings.curl_timeout) or 2
+    local max_time = tonumber(settings.curl_max_time) or 2
+    local curl_address = settings.curl_address or "http://www.gstatic.com/generate_204"
+
     local curl_cmd = string.format(
-        "curl --interface %q --connect-timeout %s --max-time %s -s -S -w '%%{time_total}\\n' -o /dev/null '%s'",
-        ifn, settings.curl_timeout, settings.curl_max_time, settings.curl_address
+        "curl --interface %q --connect-timeout %d --max-time %d -s -S -w '%%{time_total}\\n' -o /dev/null '%s'",
+        ifn, connect_timeout, max_time, curl_address
     )
 
     local output = util.trim(util.exec(curl_cmd))
@@ -121,6 +131,35 @@ function M.run_curl_test(ifn)
     }
 end
 
+---------------------------------------------------------------------------------------------
+-- Function: Run Curl Test on All Interfaces
+---------------------------------------------------------------------------------------------
+function M.run_curl_test_all()
+    local results = {}
+    local interfaces = iface.get_interfaces().interfaces or {}
+
+    for _, ifn in ipairs(interfaces) do
+        local res = M.run_curl_test(ifn)
+        table.insert(results, res)
+    end
+
+    return { success = true, results = results }
+end
+
+---------------------------------------------------------------------------------------------
+-- Function: Run Ping Test on All Interfaces
+---------------------------------------------------------------------------------------------
+function M.run_ping_test_all()
+    local results = {}
+    local interfaces = iface.get_interfaces().interfaces or {}
+
+    for _, ifn in ipairs(interfaces) do
+        local res = M.run_ping_test(ifn)
+        table.insert(results, res)
+    end
+
+    return { success = true, results = results }
+end
 
 
 return M

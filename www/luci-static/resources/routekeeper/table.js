@@ -240,28 +240,37 @@ return L.Class.extend({
         //-----------------------------------------------------------------------------------------------------------
         //-- Function to Test All Interfaces
         //-----------------------------------------------------------------------------------------------------------
-        async function testAllInterfaces() {
-            // Disable all buttons before starting the tests
-            self.testButtons.forEach(btn => btn.disabled = true);
-            self.makeDefaultButtons.forEach(btn => btn.disabled = true);
+async function testAllInterfaces() {
+    self.testButtons.forEach(btn => btn.disabled = true);
+    self.makeDefaultButtons.forEach(btn => btn.disabled = true);
 
-            // Load settings ONCE and reuse them for all interfaces
-            let settings = await loadSettings();
+    // Clear current test results
+    clearTestResults();
 
-            // Create an array of test promises for all interfaces
-            let testPromises = interfaces.map(iface => testInterface(self.getInterfaceBySectionId(iface), settings));
+    // Run both ping and curl test batches in parallel
+    let [pingResults, curlResults] = await Promise.all([
+        api.runPingTestAll().catch(() => ({ results: [] })),
+        api.runCurlTestAll().catch(() => ({ results: [] }))
+    ]);
 
-            // Run all tests concurrently and wait for all to finish
-            await Promise.all(testPromises);
+    // Map and render results
+    pingResults.results.forEach(res => {
+        let section_id = res.interface.replace(/[^a-zA-Z0-9]/g, "_");
+        updateTestResult("ping", section_id, res.ping_result);
+    });
 
-            // Re-enable buttons after all tests are complete
-            self.testButtons.forEach(btn => btn.disabled = false);
-            self.makeDefaultButtons.forEach(btn => {
-                let isDefault = btn.innerText.trim() === "Default";
-                btn.disabled = isDefault;
-            });
-        }
+    curlResults.results.forEach(res => {
+        let section_id = res.interface.replace(/[^a-zA-Z0-9]/g, "_");
+        updateTestResult("curl", section_id, res.curl_result);
+    });
 
+    // Re-enable buttons
+    self.testButtons.forEach(btn => btn.disabled = false);
+    self.makeDefaultButtons.forEach(btn => {
+        let isDefault = btn.innerText.trim() === "Default";
+        btn.disabled = isDefault;
+    });
+}
         //-----------------------------------------------------------------------------------------------------------
         //-- Event Handlers for Buttons
         //-----------------------------------------------------------------------------------------------------------

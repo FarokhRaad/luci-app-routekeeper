@@ -64,6 +64,20 @@ local routekeeper_api = {
         end, { interface = ubus.STRING }
     },
 
+    -- Run Ping Test on All Interfaces
+    run_ping_test_all = {
+        function(req, msg)
+            conn:reply(req, health_check.run_ping_test_all())
+        end, {}
+    },
+
+    -- Run Curl Test on All Interfaces
+    run_curl_test_all = {
+        function(req, msg)
+            conn:reply(req, health_check.run_curl_test_all())
+        end, {}
+    },
+
     -- Load settings from UCI
     load_settings = {
         function(req, msg)
