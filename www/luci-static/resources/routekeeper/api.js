@@ -34,6 +34,16 @@ var runCurlTest = rpc.declare({
     params: ['interface']
 });
 
+var runPingTestAll = rpc.declare({
+    object: 'luci.routekeeper',
+    method: 'run_ping_test_all'
+});
+
+var runCurlTestAll = rpc.declare({
+    object: 'luci.routekeeper',
+    method: 'run_curl_test_all'
+});
+
 var loadSettings = rpc.declare({
     object: 'luci.routekeeper',
     method: 'load_settings',
@@ -55,6 +65,8 @@ return L.Class.extend({
     setDefaultGateway: setDefaultGateway,
     runPingTest: runPingTest,
     runCurlTest: runCurlTest,
+    runPingTestAll: runPingTestAll,
+    runCurlTestAll: runCurlTestAll,
     loadSettings: loadSettings,
     saveSettings: saveSettings
 });

@@ -240,37 +240,62 @@ return L.Class.extend({
         //-----------------------------------------------------------------------------------------------------------
         //-- Function to Test All Interfaces
         //-----------------------------------------------------------------------------------------------------------
-async function testAllInterfaces() {
-    self.testButtons.forEach(btn => btn.disabled = true);
-    self.makeDefaultButtons.forEach(btn => btn.disabled = true);
+        async function testAllInterfaces() {
+            // Disable buttons during test run
+            self.testButtons.forEach(btn => btn.disabled = true);
+            self.makeDefaultButtons.forEach(btn => btn.disabled = true);
 
-    // Clear current test results
-    clearTestResults();
+            // Load test settings
+            let settings = await loadSettings();
+            let testType = settings?.settings?.test_type ?? settings?.test_type;
+            testType = ["ping", "curl", "both"].includes(testType?.trim().toLowerCase()) ? testType : "both";
 
-    // Run both ping and curl test batches in parallel
-    let [pingResults, curlResults] = await Promise.all([
-        api.runPingTestAll().catch(() => ({ results: [] })),
-        api.runCurlTestAll().catch(() => ({ results: [] }))
-    ]);
+            // Show loading spinners
+            interfaces.forEach(iface => {
+                if (testType === "ping" || testType === "both") {
+                    let pingCell = document.getElementById(`ping-${iface}`);
+                    if (pingCell) {
+                        pingCell.innerHTML = `<span class='loading-icon' style='margin-left: 28px; color: #4da1c0;'>&#9696;</span>`;
+                    }
+                }
+                if (testType === "curl" || testType === "both") {
+                    let curlCell = document.getElementById(`curl-${iface}`);
+                    if (curlCell) {
+                        curlCell.innerHTML = `<span class='loading-icon' style='margin-left: 28px; color: #4da1c0;'>&#9696;</span>`;
+                    }
+                }
+            });
 
-    // Map and render results
-    pingResults.results.forEach(res => {
-        let section_id = res.interface.replace(/[^a-zA-Z0-9]/g, "_");
-        updateTestResult("ping", section_id, res.ping_result);
-    });
+            let pingResults = [], curlResults = [];
 
-    curlResults.results.forEach(res => {
-        let section_id = res.interface.replace(/[^a-zA-Z0-9]/g, "_");
-        updateTestResult("curl", section_id, res.curl_result);
-    });
+            // Conditionally run only selected test type(s)
+            if (testType === "ping" || testType === "both") {
+                const pingResp = await api.runPingTestAll().catch(() => null);
+                pingResults = Array.isArray(pingResp?.results) ? pingResp.results : [];
+            }
 
-    // Re-enable buttons
-    self.testButtons.forEach(btn => btn.disabled = false);
-    self.makeDefaultButtons.forEach(btn => {
-        let isDefault = btn.innerText.trim() === "Default";
-        btn.disabled = isDefault;
-    });
-}
+            if (testType === "curl" || testType === "both") {
+                const curlResp = await api.runCurlTestAll().catch(() => null);
+                curlResults = Array.isArray(curlResp?.results) ? curlResp.results : [];
+            }
+
+            // Apply results
+            pingResults.forEach(result => {
+                updateTestResult("ping", result.interface, result.success ? result.ping_result : null);
+            });
+
+            curlResults.forEach(result => {
+                updateTestResult("curl", result.interface, result.success ? result.curl_result : null);
+            });
+
+            // Re-enable buttons
+            self.testButtons.forEach(btn => btn.disabled = false);
+            self.makeDefaultButtons.forEach(btn => {
+                let isDefault = btn.innerText.trim() === "Default";
+                btn.disabled = isDefault;
+            });
+        }
+
         //-----------------------------------------------------------------------------------------------------------
         //-- Event Handlers for Buttons
         //-----------------------------------------------------------------------------------------------------------
