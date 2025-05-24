@@ -6,7 +6,9 @@
                 "luci.routekeeper": [
                     "get_interfaces",
                     "load_settings",
-                    "find_active_default_if"
+                    "find_active_default_if",
+                    "run_ping_test_all",
+                    "run_curl_test_all"
                 ]
             },
             "uci": ["routekeeper"],
