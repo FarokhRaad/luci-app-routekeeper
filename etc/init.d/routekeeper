@@ -99,11 +99,18 @@ stop_service() {
 # Status: report current selected interface
 # ------------------------------------------------------------------------------------------------
 status_service() {
-    local current_gw
-    current_gw=$(ubus call luci.routekeeper find_active_default_if 2>/dev/null | jsonfilter -e "@.interface")
+    local response current_gw
+
+    response=$(ubus call luci.routekeeper find_active_default_if 2>/dev/null)
+    if [ -z "$response" ]; then
+        echo "UBUS call failed or returned nothing."
+        return 1
+    fi
+
+    current_gw=$(echo "$response" | jsonfilter -e "@.default_interface")
     if [ -n "$current_gw" ]; then
         echo "Current default interface: $current_gw"
     else
-        echo "No active default interface set or ubus call failed."
+        echo "No active default interface set in ubus response."
     fi
 }
