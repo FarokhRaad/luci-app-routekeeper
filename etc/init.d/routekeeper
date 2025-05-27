@@ -1,72 +1,79 @@
 #!/bin/sh /etc/rc.common
 
-# RouteKeeper Init Script with Procd Management and Smart Gateway Selection
+# RouteKeeper Init Script — Smart Gateway Selection via HTTP Latency
 
 START=90
 STOP=10
 USE_PROCD=1
 
 PROG="/usr/libexec/rpcd/routekeeper/rpc_handler.lua"
+TEST_URL="http://www.gstatic.com/generate_204"
 
 # ------------------------------------------------------------------------------------------------
-# Function: Run ping tests and select the interface with the lowest latency (fallback to WAN)
+# Function: Run curl tests and select interface with lowest HTTP latency
 # ------------------------------------------------------------------------------------------------
 select_best_gateway() {
-    echo "Selecting best default interface based on ping..."
+    logger -t routekeeper "Selecting best default interface based on HTTP latency..."
 
     retries=5
     delay=2
 
+    interfaces_raw=$(ubus call luci.routekeeper get_interfaces 2>/dev/null)
+    [ $? -ne 0 ] && logger -t routekeeper "Failed to get interfaces from ubus" && return
+
     while [ "$retries" -gt 0 ]; do
-        interfaces=$(ubus call luci.routekeeper get_interfaces | jsonfilter -e "@.interfaces[*]" | tr -d '"' | grep -v '^wan$')
+        interfaces=$(echo "$interfaces_raw" | jsonfilter -e "@.interfaces[*]" | tr -d '"' | grep -v '^wan$')
         [ -n "$interfaces" ] && break
-        echo "  Waiting for interfaces to become ready..."
+        logger -t routekeeper "Waiting for interfaces to become ready..."
         sleep "$delay"
         retries=$((retries - 1))
     done
 
     if [ -z "$interfaces" ]; then
-        echo "No usable interfaces found after waiting. Falling back to WAN..."
+        logger -t routekeeper "No usable interfaces found. Falling back to WAN."
         ubus call luci.routekeeper set_default_gateway '{"interface":"wan"}'
         return
     fi
 
     best_if=""
-    best_latency=9999
+    best_latency_ms=999999
 
     for iface in $interfaces; do
-        echo "  Testing $iface..."
-        result=$(ubus call luci.routekeeper run_ping_test "{\"interface\":\"$iface\"}")
-        ping_result=$(echo "$result" | jsonfilter -e "@.ping_result" 2>/dev/null)
-        latency=$(echo "$ping_result" | grep -oE '[0-9]+')
+        logger -t routekeeper "Testing $iface with curl to $TEST_URL..."
 
-        if [ -n "$latency" ]; then
-            echo "    Latency: ${latency} ms"
-            if [ "$latency" -lt "$best_latency" ]; then
-                best_latency=$latency
+        latency=$(curl -o /dev/null -s -w "%{time_total}\n" \
+            --interface "$iface" \
+            --connect-timeout 2 \
+            --max-time 2 \
+            "$TEST_URL")
+
+        if echo "$latency" | grep -Eq '^[0-9]+\.[0-9]+$'; then
+            latency_ms=$(awk "BEGIN {printf \"%d\", $latency * 1000}")
+            logger -t routekeeper "  $iface latency: ${latency_ms} ms"
+            if [ "$latency_ms" -lt "$best_latency_ms" ]; then
+                best_latency_ms=$latency_ms
                 best_if=$iface
             fi
         else
-            echo "    Ping failed or invalid latency"
+            logger -t routekeeper "  $iface failed curl test"
         fi
     done
 
     if [ -n "$best_if" ]; then
-        echo "Best interface: $best_if ($best_latency ms)"
+        logger -t routekeeper "Best interface: $best_if (${best_latency_ms} ms)"
         ubus call luci.routekeeper set_default_gateway "{\"interface\":\"$best_if\"}"
     else
-        echo "No successful ping responses. Falling back to WAN..."
+        logger -t routekeeper "No successful curl responses. Falling back to WAN."
         ubus call luci.routekeeper set_default_gateway '{"interface":"wan"}'
     fi
 }
 
 # ------------------------------------------------------------------------------------------------
-# Function: Start RouteKeeper (via procd)
+# Start: launch RPCD handler and run gateway selector
 # ------------------------------------------------------------------------------------------------
 start_service() {
-    echo "Starting RouteKeeper..."
+    logger -t routekeeper "Starting RouteKeeper..."
 
-    # Start rpc_handler.lua and track via procd
     procd_open_instance
     procd_set_param command lua "$PROG"
     procd_set_param stdout 1
@@ -74,7 +81,7 @@ start_service() {
     procd_set_param respawn
     procd_close_instance
 
-    # Wait a bit, then select best gateway in background
+    # Perform initial gateway selection
     (
         sleep 2
         select_best_gateway
@@ -82,17 +89,21 @@ start_service() {
 }
 
 # ------------------------------------------------------------------------------------------------
-# Function: Stop RouteKeeper (procd handles this)
+# Stop
 # ------------------------------------------------------------------------------------------------
 stop_service() {
-    echo "Stopping RouteKeeper..."
+    logger -t routekeeper "Stopping RouteKeeper..."
 }
 
 # ------------------------------------------------------------------------------------------------
-# Optional explicit restart handler
+# Status: report current selected interface
 # ------------------------------------------------------------------------------------------------
-restart() {
-    stop
-    sleep 1
-    start
+status_service() {
+    local current_gw
+    current_gw=$(ubus call luci.routekeeper find_active_default_if 2>/dev/null | jsonfilter -e "@.interface")
+    if [ -n "$current_gw" ]; then
+        echo "Current default interface: $current_gw"
+    else
+        echo "No active default interface set or ubus call failed."
+    fi
 }
