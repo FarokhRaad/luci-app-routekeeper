@@ -1,0 +1,1 @@
+opkg install lua lua-ubus luci-lib-json libuci-lua libubox-lua curl
